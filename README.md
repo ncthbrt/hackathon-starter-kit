@@ -2,7 +2,9 @@
 
 This is a simple Root integrated Node Express app that packages a simple oauth and sponsor management interface. It's designed to help devs get started quickly at hackathons.
 
-The starter-kit is based around a simple app, which encourages users to drive below the speed limit. The client receives (fake) speed data from a device installed in the user's car. If the user's average speed stays below the speed limit for a certain amount of time, 10% of the user's next fuel purchase is sponsored by the client.
+The starter-kit is based around a simple app which encourages users to drive below the speed limit. The client receives (simulated) speed data from a device installed in the user's car. If the user's average speed stays below the speed limit for a certain amount of time, 5% of the user's next fuel purchase is sponsored by the client.
+
+The starter-kit allows you to simulate a data stream from the interface which you can then interpret inside the NodeJS app.
 
 ## 1) Getting Started
 
@@ -54,7 +56,30 @@ Enter a name for your app. Client app names must be unique, so you can use some 
 
 To sponsor a user's payments, we need to create a sponsor add-on to our client app on Root. Go to your client app and click on "+ Create Add-on".
 
-Choose a name for your sponsor add-on, e.g. "Fuel Discount". For the webhook URL, use the ngrok URL copied above with `/webhooks/sponsors` appended to it. 
+Choose a name for your sponsor add-on, e.g. "Fuel Discount". For the webhook URL, use the ngrok URL copied above with `/webhooks/sponsors` appended to it.
+
+Save the code below in your sponsor's code editor. This will sponsor 5% towards transactions at service stations for all users defined in the `users` config variable. These users are determined and set by our NodeJS app.
+
+```
+// Sponsor 5% of qualifying users' fuel purchases
+function sponsorAmount(transaction, history) {
+  var amount = Math.abs(transaction.amount);
+  var userId = transaction.user_id;
+  var addedUsers = process.env.users;
+
+  // Check valid user
+  if (!addedUsers.includes(userId)) {
+    return 0;
+  }
+
+  // Check fuel purchase
+  if (transaction.merchant.category !== 'Service Stations') {
+    return 0;
+  }
+
+  return Math.round(amount * 0.05);
+}
+```
 
 ### 1.5) Link to App to Root
 

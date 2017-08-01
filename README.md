@@ -85,7 +85,7 @@ function sponsorAmount(transaction, history) {
 
 The last step is to update the example app's config variables to link it to our Root client app and sponsor add-on. Fill in the values for the fields in the `.env-temp` file on the example app and change the name of the file to `.env`.
 
-You can find your `CLIENT_ID` and `CLIENT_SECRET` if you view your client app on Root. To get your `SPONSOR_ID`, navigate to the sponsor add-on created earlier and copy the string after `/sponsor/` in the URL. Your `OAUTH_REDIRECT_URL` will need to be the same one you entered when creating the client app, e.g. `https://590381dc.ngrok.io/callback`.
+You can find your `CLIENT_ID` and `CLIENT_SECRET` if you view your client app on Root (App ID and App Secret). To get your `SPONSOR_ID`, navigate to the sponsor add-on created earlier and copy the string after `/sponsor/` in the URL. Your `OAUTH_REDIRECT_URL` will need to be the same one you entered when creating the client app, e.g. `https://590381dc.ngrok.io/callback`.
 
 Your app should now be connected and ready to run with Root.
 

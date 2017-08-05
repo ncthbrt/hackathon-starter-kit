@@ -68,7 +68,7 @@ function sponsorAmount(transaction, history) {
   var addedUsers = process.env.users;
 
   // Check valid user
-  if (!addedUsers.includes(userId)) {
+  if (addedUsers && !addedUsers.includes(userId)) {
     return 0;
   }
 

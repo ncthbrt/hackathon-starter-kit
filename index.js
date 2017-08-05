@@ -1,4 +1,3 @@
-
 require('dotenv').config();
 var bodyParser = require('body-parser');
 var express = require('express');
@@ -12,6 +11,7 @@ db = db.connect('./database', ['users', 'sponsor_payments', 'events']);
 var users = require('./helpers/users');
 var { getRandValue } = require('./helpers/money-methods');
 
+
 var Pusher = require('pusher');
 var pusher = new Pusher({
   appId: '375211',
@@ -20,6 +20,7 @@ var pusher = new Pusher({
   cluster: 'eu',
   encrypted: true
 });
+
 var PUSHER_CHANNEL = process.env.CLIENT_ID;
 
 var logAndNotify = function(message) {
@@ -78,20 +79,17 @@ app.get('/callback', function(req, res) {
       last_name: params.last_name,
       email: params.email,
       user_id: params.user_id,
+      balance: 0
     };
     db.users.update({ user_id: params.user_id }, user, { upsert: true });
 
     logAndNotify('New user: ' + params.first_name + ' ' + params.last_name);
 
     // Get and store user's access token
-    users.getAccessToken(params.code, function(err, data) {
-      if (err) {
-        console.error('ERROR GETTING ACCESS TOKEN:', err);
-      } else {
+    users.getAccessToken(params.code).then(data => {
         user.access_token = data.access_token;
         user.refresh_token = data.refresh_token;
         db.users.update({ user_id: user.user_id }, user);
-      }
     });
   }
 
@@ -99,60 +97,18 @@ app.get('/callback', function(req, res) {
   res.redirect('/?user_id=' + params.user_id);
 });
 
-//==========================================================//
-//================== EXTERNAL DATA INPUT ===================//
-//==========================================================//
 
-// This endpoint is used to log data from a user's device. e.g. a smartwatch or
-// smartphone. In our example this is speed information from a user's car
-// or smartphone.
-// If the user stays below the MAX_SPEED for 10 consecutive "events", 
-// he/she is added to our "Fuel Discount" sponsor.
-app.post('/log-event', function(req, res) {
-  var data = req.body;
 
-  // Validate value is non-negative integer
-  var value = parseInt(data.value);
-  if (data.value !== value.toString() || value < 0) {
-    return res.status(400).json({ error: 'invalid_value' });
-  }
+const adjustBalance = (transaction) => {
+    let user = db.users.findOne({user_id: transaction.user_id});
+    
+    return users.adjustUserBalanceConfigVariable(transaction.user_id, transaction.sponsor_amount,transaction.sponsor_id).then(_ => {     
+          let balance = (user.balance + transaction.sponsor_amount) < 0 ? 0 : (user.balance + transaction.sponsor_amount);           
+          db.users.update({ user_id: transaction.user_id }, { balance });               
+          return Promise.resolve({});
+    });     
+};
 
-  // Save event in database
-  var event = {
-    value,
-    time: data.time,
-    user_id: data.user_id,
-  };
-  db.events.save(event);
-
-  logAndNotify('Event: ' + value);
-
-  // Get average of user's 10 most recent speeds
-  var user = db.users.findOne({ user_id: event.user_id });
-  var userData = db.events.find({ user_id: event.user_id });
-  var recentData = userData.slice(-10);
-  var averageSpeed = recentData.reduce(function(ave, current) {
-    return ave + parseInt(current.value) / recentData.length;
-  }, 0);
-
-  // If at least 10 events AND average speed less than max AND
-  // user has not been added to sponsor:
-  //   add user to sponsor
-  if (recentData.length >= 10 && averageSpeed <= MAX_SPEED && !user.added_to_sponsor) {
-    db.users.update({ user_id: event.user_id }, { added_to_sponsor: true });
-    users.addUserToConfigVariables(data.user_id, process.env.SPONSOR_ID, function(err, result) {
-      if (err) {
-        console.error('ERROR ADDING USER TO SPONSOR:', err);
-        user.added_to_sponsor = false;
-        db.users.update({ user_id: event.user_id }, { added_to_sponsor: false });
-      } else {
-        logAndNotify('User added to sponsor');
-      }
-    })
-  }
-
-  res.send();
-});
 
 //==========================================================//
 //============== SPONSOR WEBHOOK HANDLER ===================//
@@ -175,24 +131,15 @@ app.post('/webhooks/sponsors', function(req, res) {
     var transaction = {
       user_id: userId,
       sponsor_id: sponsorId,
-      sponsor_amount: sponsorAmount,
+      sponsor_amount: -sponsorAmount,
       transaction_id: transactionId,
     };
-
-    db.sponsor_payments.save(transaction);
-
-    users.removeUserFromConfigVariables(userId, sponsorId, function(err, result) {
-      if (err) {
-        console.error('Error removing user from config variables:', err);
-      } else {
-        user = db.users.findOne({ user_id: userId });
-        user.added_to_sponsor = false;
-        db.users.update({ user_id: userId }, user);
-        logAndNotify('User removed from sponsor')
-      }
-    });
+    console.log(transaction);
+    db.sponsor_payments.save(transaction);        
+    adjustBalance(transaction).then(_=> logAndNotify('User spent money'))
   }
 
+  res.status(200);
   res.send();
 });
 
@@ -206,18 +153,87 @@ app.get('/users', function(req, res) {
   res.json(db.users.find());
 });
 
-// Return the average speed for the specified user.
-app.get('/users/:user_id/average', function(req, res) {
-  var userId = req.params.user_id;
-  var userData = db.events.find({ user_id: userId });
-
-  var averageSpeed = userData.reduce(function(ave, current) {
-    return ave + parseInt(current.value) / userData.length;
-  }, 0);
-
-  res.json({ average_speed: averageSpeed.toFixed(2) });
+app.post('/users/:user_id/approve', (req,res)=> {
+  let userData = db.users.find({ user_id: req.params.user_id });  
+  if (userData) {      
+    // Reset balance. 
+    userData.balance = 0;
+    if(req.body.state === true){
+        users.addUserToConfigVariables(req.params.user_id, process.env.SPONSOR_ID).then(_ => {        
+            db.users.update({ user_id: req.params.user_id }, { approved:  true });
+            logAndNotify('User added to sponsor');
+        });  
+    }else{
+        users.removeUserFromConfigVariables(req.params.user_id, process.env.SPONSOR_ID).then(_ =>{          
+            db.users.update({ user_id: req.params.user_id }, { approved: false });
+            logAndNotify('User removed from sponsor');
+            userData.approved = req.body.state;
+            res.status(200);
+          }
+        );     
+    }    
+    res.send(userData);
+  }else{
+    res.status(404);
+    res.send();
+  }    
 });
 
+// Needed for initial handshake
+app.head('/trello/webhook',(req,res)=>{
+  res.status(200);
+  res.send();
+});
+
+
+const adjustBalances = (amount) =>       
+    users.adjustUserBalances(amount, process.env.SPONSOR_ID).then( _ => {
+        let users = db.users.find();
+        users.forEach((user) => {
+          user.balance += amount;
+          user.balance = user.balance > 0 ? user.balance : 0;
+          db.users.update({user_id: user.user_id},user);
+        });             
+    });
+
+
+
+app.post('/trello/webhook', (req,res) => {
+  if(req.body.action && req.body.action 
+     && req.body.action.data
+     && req.body.action.type === "updateCard"
+     && req.body.action.data.listBefore)
+  {    
+    let prevName = req.body.action.data.listBefore.name;
+    let nextName = req.body.action.data.listAfter.name;
+    let valuePerCompletedCard = 10*100 // Sponsor ten rand per completed card
+    let amount = 0
+    if((prevName==='Backlog' || prevName==='In Progress') && nextName === 'Done'){
+      // Moved to done
+      amount = valuePerCompletedCard;
+    }else if(prevName === 'Done' && ((nextName==='Backlog' || nextName==='In Progress'))){
+      // Moved from done      
+      amount = -valuePerCompletedCard;
+    }
+
+    if(amount!==0){
+      adjustBalances(amount).then(_=>{
+          if(amount>0){
+            logAndNotify('Task complete. The beer fund is getting bigger');
+          }else{
+            logAndNotify('Task moved back. The beer fund is getting smaller');
+          }
+      });
+      
+    }    
+    
+  }
+  res.status(200);
+  res.send();
+});
+
+
+
 app.listen(3000, function () {
-  console.log('Example app listening on port 3000!')
+  console.log('App starting on port 3000!')
 });

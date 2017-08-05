@@ -3,10 +3,35 @@ body {
 }
 
 .navbar {
-  background-color: #2ABB9B;
-  border-color: #25a287;
+  background-color: #f99135;
+  border-color: #f99135;
 }
 
+.btn-primary{
+  color: black;
+  background-color: white;  
+}
+
+.btn-add {
+  border: none;
+  color: white;
+  background-color: green;
+}
+
+.btn-remove {
+  border: none;
+  color: white;
+  background-color: red;
+}
+
+.no-border{
+  margin: 0 !important;
+}
+.bar-logo{
+  height: 32px !important;
+  width: 32px !important;
+  margin: 0 !important;
+}
 .navbar-brand>img {
   max-height: 34px;
   margin-top: -7px;
@@ -15,6 +40,10 @@ body {
 .navbar-text {
   color: white !important;
   margin-left: 0;
+}
+
+.text{
+  text-align: left;
 }
 
 .alertify-logs {
@@ -57,8 +86,8 @@ body {
   left: 0;
   right: 0;
   height: 44px;
-  background-color: #2ABB9B;
-  border-color: #25a287;
+  background-color: #f99135;
+  border-color: #f99135;
   border-bottom-width: 1px;
   border-bottom-style: solid;
   display: flex;
@@ -75,7 +104,7 @@ body {
   display: none;
 }
 .iphone.signed-out .screen {
-  background-color: #2ABB9B;
+  background-color: #f99135;
   color: white;
 }
 .iphone.signed-out .screen .navigation-bar {

@@ -19,26 +19,50 @@ function fetchUsers(callback) {
 function renderUsers(users) {
   if (users.length === 0) {
     return;
-  }
-
-  // Update users table
+  } 
+  
+  let updateApproval = (user, value) => {
+      console.log('its happening');
+      $.ajax({
+          type: "POST",
+          url: `/users/${user.user_id}/approve`,
+          // The key needs to match your method's input parameter (case-sensitive).
+          data: JSON.stringify({state : value}),
+          contentType: "application/json",
+          dataType: "json",          
+          success: function() {            
+              user.approved = value;            
+              renderUsers(users);            
+          },
+          failure: function(errMsg) {
+              console.log(failure);
+          }
+      });            
+  };
+  
   var $tbody = $('#users-table');
-  $tbody.find("tr").remove();
+  $tbody.find("tr").remove();      
   users.forEach(function(user) {
+
     var tr = `<tr>
       <td>${user.first_name} ${user.last_name}</td>
       <td>${user.email}</td>
-      <td>${user.user_id}</td>
-    </tr>`;
-    $tbody.append(tr);
-  });
-  // Update users dropdown
-  var $select = $('#users-dropdown');
-  $select.find('option').remove();
-  users.forEach(function(user) {
-    var option = `<option value='${user.user_id}'>${user.first_name} ${user.last_name}</option>`;
-    $select.append(option);
-  });
+      <td>${user.user_id}</td>`;
+    
+      
+    if(!user.approved){   
+      let buttonId = `approve-${user.userid}`;   
+      tr += `<td><div id='${buttonId}' class="btn btn-add btn-primary">Approve</div></td>`;
+      $tbody.append(tr+'<tr/>');    
+      $('#'+buttonId).click(()=>updateApproval(user, true));
+    }else{
+      let buttonId = `unapprove-${user.userid}`;   
+      tr += `<td><div id='${buttonId}' class="btn btn-remove btn-primary">Unapprove</div></td>`;
+      $tbody.append(tr+'<tr/>');    
+      $('#'+buttonId).click(()=>updateApproval(user, false));
+    }       
+  });    
+  
 }
 
 // Wait for jQuery to load
@@ -61,47 +85,6 @@ $(document).ready(function() {
       alert('Could not post event!');
     });
   });
-
-  // Submit event stream with AJAX on interval
-  // Clear previous stream if exists and start new one
-  var streamInterval = undefined;
-  $("#form-event-stream").submit(function(event) {
-    event.preventDefault();
-    clearInterval(streamInterval); // Clear any previous interval
-    var $form = $(this);
-    var url = $form.attr('action');
-    var user_id = $('#users-dropdown').val();
-    var data = $form.serializeArray().reduce(function(obj, item) { obj[item.name] = item.value; return obj; }, {});
-    var millis = data.millis || 1000;
-    var values = data.values.split(',');
-
-    if (data.values === "") {
-      return customAlert("Nothing to publish");
-    }
-
-    // Send values in sequence
-    var i = 0;
-    streamInterval = setInterval(function() {
-      var postData = {
-        value: values[i],
-        time: (new Date()).getTime(),
-        user_id,
-      };
-      $.post(url, postData).done(function(data) {
-        // customAlert(data);
-      })
-      .fail(function(error) {
-        alert('Could not post event!');
-        return clearInterval(streamInterval);
-      });
-      i++;
-      // If past last item, stop the interval
-      if (i === values.length) {
-        return clearInterval(streamInterval);
-      }
-    }, millis);
-  });
-
 });
 
 // ======================== //
@@ -114,8 +97,19 @@ var pusher = new Pusher('b189220d550c56f9e80b', {
 });
 var channel = pusher.subscribe(PUSHER_CHANNEL);
 
-channel.bind('notify', function(data) {
-  customAlert(data.message);
+channel.bind('notify', function(data) {  
+  fetchUsers(function(users) {
+    var currentUser = users.find(function(user) {
+      return user.user_id === userId;
+    });
+
+    if (currentUser) {
+      $("#iphone").attr('class', 'iphone signed-in');
+      $("#greeting").text('Hi ' + ((currentUser.first_name+',') || 'there,'));
+      $("#balance").text(`R ${getRandValue(currentUser.balance || 0)}`);
+      CURRENT_USER = currentUser;
+    }
+  });
 });
 
 channel.bind('new_user', function(data) {
@@ -128,6 +122,18 @@ channel.bind('new_user', function(data) {
 // ======================== //
 // ========= INIT ========= //
 // ======================== //
+
+let getRandValue = (centValue) => {
+  const cents = Math.floor(centValue) % 100;
+  const centsString = (cents + 100).toString().slice(-2);
+
+  const integer = Math.floor(centValue / 100);
+  const reversed = integer.toString().split('').reverse().join('');
+  const comma = reversed.replace(/(\d{3})/g, '$1 ').trim().replace(/\s/g, ',');
+  const normalComma = comma.split('').reverse().join('');
+  return `${normalComma}.${centsString}`;
+};
+
 var queryParams = {};
 location.search.substr(1).split("&").forEach(function(item) {
   queryParams[item.split("=")[0]] = item.split("=")[1]
@@ -143,7 +149,9 @@ fetchUsers(function(users) {
 
   if (currentUser) {
     $("#iphone").attr('class', 'iphone signed-in');
-    $("#greeting").text('Hi, ' + (currentUser.first_name || 'there'));
+    $("#greeting").text('Hi ' + ((currentUser.first_name+',') || 'there,'));
+    $("#balance").text(`R ${getRandValue(currentUser.balance || 0)}`);
     CURRENT_USER = currentUser;
   }
 });
+
